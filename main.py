@@ -76,7 +76,8 @@ class Tile:
     
     # Method moves the tile.
     def move(self, delta):
-        pass
+        self.x += delta[0]
+        self.y += delta[1]
 
 def draw_grid(window):
     for row in range(1, ROWS):
@@ -118,6 +119,81 @@ def get_random_pos(tiles):
         
     return (row, col)
         
+def move_tiles(window, tiles, clock, direction):
+    updated = True
+    # The tiles that already had a merge operation done, that way we don't
+    # allow them to merge again.
+    blocks = set()
+    
+    if direction == "left":
+        # Sort the tiles by their column.  Since the tiles are being held in a
+        # dictionary, they are not in any particular order.  We want to create
+        # a list to hold the order of the row's tiles.
+        # Note: lambda is an anonymous function. It is equivalent to
+        # def func(x):
+        #   return x.col
+        sort_function = lambda x: x.col
+        # The order to sort in.
+        reverse = False
+        # How much to move each tile by per each frame. -MOVE_VEL means a -x,
+        # which means move the tile to the left. 0 means do not move up or down.
+        delta = (-MOVE_VEL, 0)
+        # Check if tile to move has reached the boundary of the playing field.
+        boundary_check = lambda tile: tile.col == 0
+        # Get next tile, so we know if we will be merging with it or blocked
+        # by it per game rules.  Returns None if no next tile.
+        get_next_tile = lambda tile: tiles.get(f"{tile.row}{tile.col - 1}")
+        # Check whether or not we should merge the tile, based on the movement
+        # of it (ie. have we moved the tile far enough to where it looks like it 
+        # is completely inside the other tile?)
+        merge_check = lambda tile, next_tile: tile.x > next_tile.x + MOVE_VEL
+        # Check if there is a tile next to the current tile, but it cannot merge
+        # with it.
+        move_check = lambda tile, next_tile: tile.x > next_tile.x + RECT_WIDTH + MOVE_VEL
+        # Whether or not we should round up or down when dtermining the post-move 
+        # tile location.
+        ceiling = True
+    elif direction == "right":
+        pass
+    elif direction == "up":
+        pass
+    elif direction == "down":
+        pass    
+    
+    # Updated means we have a change on the playing board we need to make happen.
+    while updated:
+        clock.tick(FPS)
+        # Reset updated back to False.
+        updated = False
+        # Sort the tiles.
+        sorted_tiles = sorted(tiles.values(), key = sort_function, reverse = reverse)
+        
+        for i, tile in enumerate(sorted_tiles):
+            # If we're at the boundary of the grid, do nothing.
+            if boundary_check(tile):
+                pass
+            
+            next_tile = get_next_tile(tile)
+            # If there's no tile next to the current tile, move it by delta.
+            if not next_tile:
+                tile.move(delta)
+            # If tile and next tile have the same value...
+            elif (tile.value == next_tile.value 
+                  and tile not in blocks # ...and tile hasn't just merged...
+                  and next_tile not in blocks # ...and next_tile hasn't either...
+                  ):
+                # Check if a merge is in process.
+                if merge_check(tile, next_tile):
+                    # Keep moving the tile.
+                    tile.move(delta)
+                # Otherwise, merge has completed.
+                else:
+                    # Multiply the value of the tile we merged with by 2.
+                    next_tile.value *= 2
+                    # Pop the tile that disappeared because of the merge.
+                    sorted_tiles.pop(i)
+                    blocks.add(next_tile)
+
 # Function to generate two initial tiles to start our game.   
 def generate_tiles():
     # Create empty dictionary for tiles.
