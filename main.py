@@ -71,8 +71,20 @@ class Tile:
         window.blit(text, (x_position, y_position))
     
     # Method sets the position of the tile in the grid.
-    def set_position(self):
-        pass
+    # Look at the current x and y position of the tile, then update the row and
+    # column based on that position.
+    def set_position(self, ceiling = False):
+        # If we're rounding up...
+        if ceiling:
+            self.row = math.ceil(self.y / RECT_HEIGHT)
+            self.col = math.ceil(self.x / RECT_WIDTH)
+        # Otherwise, round down.
+        else:
+            self.row = math.floo(self.y / RECT_HEIGHT)
+            self.col = math.floor(self.x / RECT_WIDTH)
+            
+            
+            
     
     # Method moves the tile.
     def move(self, delta):
@@ -91,6 +103,7 @@ def draw_grid(window):
     # Draw window border.
     pygame.draw.rect(window, OUTLINE_COLOR, (0, 0, WIDTH, HEIGHT), OUTLINE_THICKNESS)
 
+# Function that draws the game board.
 def draw(window, tiles):
     # Paint the window the background color.
     window.fill(BACKGROUND_COLOR)
@@ -138,7 +151,8 @@ def move_tiles(window, tiles, clock, direction):
         # How much to move each tile by per each frame. -MOVE_VEL means a -x,
         # which means move the tile to the left. 0 means do not move up or down.
         delta = (-MOVE_VEL, 0)
-        # Check if tile to move has reached the boundary of the playing field.
+        # Check if tile to move has reached the left boundary of the playing 
+        # field.
         boundary_check = lambda tile: tile.col == 0
         # Get next tile, so we know if we will be merging with it or blocked
         # by it per game rules.  Returns None if no next tile.
@@ -154,11 +168,32 @@ def move_tiles(window, tiles, clock, direction):
         # tile location.
         ceiling = True
     elif direction == "right":
-        pass
+        sort_function = lambda x: x.col
+        reverse = True
+        delta = (MOVE_VEL, 0)
+        boundary_check = lambda tile: tile.col == COLS - 1
+        get_next_tile = lambda tile: tiles.get(f"{tile.row}{tile.col + 1}")
+        merge_check = lambda tile, next_tile: tile.x < next_tile.x - MOVE_VEL
+        move_check = lambda tile, next_tile: tile.x + RECT_WIDTH + MOVE_VEL < next_tile.x
+        ceiling = False
     elif direction == "up":
-        pass
+        sort_function = lambda x: x.row
+        reverse = False
+        delta = (0, -MOVE_VEL)
+        boundary_check = lambda tile: tile.row == 0
+        get_next_tile = lambda tile: tiles.get(f"{tile.row - 1}{tile.col}")
+        merge_check = lambda tile, next_tile: tile.y > next_tile.y + MOVE_VEL
+        move_check = lambda tile, next_tile: tile.y > next_tile.y + RECT_HEIGHT + MOVE_VEL 
+        ceiling = True
     elif direction == "down":
-        pass    
+        sort_function = lambda x: x.row
+        reverse = True
+        delta = (0, MOVE_VEL)
+        boundary_check = lambda tile: tile.row == ROWS - 1
+        get_next_tile = lambda tile: tiles.get(f"{tile.row + 1}{tile.col}")
+        merge_check = lambda tile, next_tile: tile.y < next_tile.y - MOVE_VEL
+        move_check = lambda tile, next_tile: tile.y + RECT_HEIGHT + MOVE_VEL < next_tile.y
+        ceiling = False
     
     # Updated means we have a change on the playing board we need to make happen.
     while updated:
@@ -177,7 +212,8 @@ def move_tiles(window, tiles, clock, direction):
             # If there's no tile next to the current tile, move it by delta.
             if not next_tile:
                 tile.move(delta)
-            # If tile and next tile have the same value...
+            # Else, there is a next tile.  If tile and next tile have the same 
+            # value...
             elif (tile.value == next_tile.value 
                   and tile not in blocks # ...and tile hasn't just merged...
                   and next_tile not in blocks # ...and next_tile hasn't either...
@@ -193,6 +229,58 @@ def move_tiles(window, tiles, clock, direction):
                     # Pop the tile that disappeared because of the merge.
                     sorted_tiles.pop(i)
                     blocks.add(next_tile)
+            # Else, there is a next tile, but the value is not the same as the
+            # current tile...
+            elif move_check(tile, next_tile):
+                # Move the current tile until we reach the board of the next
+                # tile.
+                tile.move(delta)
+            # Otherwise, do nothing.
+            else:
+                continue
+            
+            # If we reach this line of code, it's because a tile moved (and thus
+            # the game board updated.)  True will allow the while loop to
+            # iterate another time.
+            updated = True
+            
+            # Update the current tile's row and column.  If we're moving to the
+            # left, ceiling will be True.  To the right, ceiling will be False.
+            tile.set_pos(ceiling)
+        
+        # Adjust the dictionary of tiles to account for any removed tiles due to
+        # merging.
+        update_tiles(window, tiles, sorted_tiles)
+        
+    # Check what should happen next after our current move.
+    return end_move(tiles)
+
+# Function to check what should happen next after our current move.
+def end_move(tiles):
+    if len(tiles) == 16:
+        # There are 16 tiles in the dictionary, meaning the board is completely 
+        # filled (ie. we lose.)
+        return "lost"
+
+    # Since we didn't lose, add a new tile to the screen.
+    # Generate a random row/col position for the new tile to add.
+    row, col = get_random_pos(tiles)
+    # Create the new tile at that position and add it to the dictionary of tiles.
+    tiles[f"{row}{col}"] = Tile(random.choice([2, 4]), row, col)
+    
+    return "continue"
+
+# Function to update the dictionary of tiles to account for any removed tiles 
+# due to merging.  Sorted_tiles holds all the tiles that currently exist.
+def update_tiles(window, tiles, sorted_tiles):
+    # Clear the dictionary of tiles.
+    tiles.clear()
+    # For each tile, assign it to a row-col string key in the dictionary.
+    for tile in sorted_tiles:
+        tiles[f"{tile.row}{tile.col}"] = tile
+    
+    # Redraw the game board.
+    draw(window, tiles)     
 
 # Function to generate two initial tiles to start our game.   
 def generate_tiles():
@@ -222,9 +310,29 @@ def main(window):
         clock.tick(FPS)
         
         for event in pygame.event.get():
+            # If user quit...
             if event.type == pygame.QUIT:
                 run = False
                 break
+            
+            # If a key was pressed...
+            if event.type == pygame.KEYDOWN:
+                # ...if that key was the left arrow...
+                if event.key == pygame.K_LEFT:
+                    # ...move to the left.
+                    move_tiles(window, tiles, clock, "left")
+                # ...if that key was the right arrow...
+                if event.key == pygame.K_RIGHT:
+                    # ...move to the right.
+                    move_tiles(window, tiles, clock, "right")
+                # ...if that key was the up arrow...
+                if event.key == pygame.K_UP:
+                    # ...move up.
+                    move_tiles(window, tiles, clock, "up")
+                # ...if that key was the down arrow...
+                if event.key == pygame.K_DOWN:
+                    # ...move down.
+                    move_tiles(window, tiles, clock, "down")
             
         # Draw the tiles on the window.
         draw(window, tiles)
